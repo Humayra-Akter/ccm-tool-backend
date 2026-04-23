@@ -1,4 +1,7 @@
-const {
+import "dotenv/config";
+import bcrypt from "bcryptjs";
+import { PrismaPg } from "@prisma/adapter-pg";
+import {
   PrismaClient,
   RoleCode,
   ControlCode,
@@ -8,17 +11,18 @@ const {
   PermissionResource,
   PermissionAction,
   ReportAccessMode,
-} = require("@prisma/client");
-const bcrypt = require("bcryptjs");
+  SettingScope,
+} from "@prisma/client";
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
+});
+
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("Seeding CCM database...");
 
-  // -----------------------------
-  // Permissions
-  // -----------------------------
   const permissionMatrix = [
     [PermissionResource.USERS, PermissionAction.CREATE],
     [PermissionResource.USERS, PermissionAction.READ],
@@ -78,9 +82,6 @@ async function main() {
     permissionIdsByCode[code] = permission.id;
   }
 
-  // -----------------------------
-  // Roles
-  // -----------------------------
   const roles = [
     {
       code: RoleCode.SUPER_ADMIN,
@@ -93,9 +94,7 @@ async function main() {
       name: "Admin",
       description:
         "Operational admin for dashboard, controls, uploads, and users",
-      permissions: Object.keys(permissionIdsByCode).filter(
-        (c) => !c.startsWith("AUDIT_LOG_") || c === "AUDIT_LOG_READ",
-      ),
+      permissions: Object.keys(permissionIdsByCode),
     },
     {
       code: RoleCode.ANALYST,
@@ -189,9 +188,6 @@ async function main() {
     }
   }
 
-  // -----------------------------
-  // Demo User
-  // -----------------------------
   const demoPassword = "Admin@12345";
   const passwordHash = await bcrypt.hash(demoPassword, 10);
 
@@ -227,9 +223,6 @@ async function main() {
     },
   });
 
-  // -----------------------------
-  // Controls
-  // -----------------------------
   const controls = [
     {
       code: ControlCode.EARLY_PAYMENTS,
@@ -344,63 +337,64 @@ async function main() {
     controlIdsByCode[item.code] = control.id;
   }
 
-  // -----------------------------
-  // App Settings
-  // -----------------------------
   const settings = [
     {
       key: "app.defaultLandingPage",
-      scope: "SYSTEM",
+      scope: SettingScope.SYSTEM,
       value: { page: "DASHBOARD" },
       description: "Default page after login",
     },
     {
       key: "app.demoMode",
-      scope: "SYSTEM",
+      scope: SettingScope.SYSTEM,
       value: { enabled: true },
       description: "Demo mode toggle for local development",
     },
     {
       key: "powerbi.embed.enabled",
-      scope: "SYSTEM",
+      scope: SettingScope.SYSTEM,
       value: { enabled: true },
       description: "Power BI embedding global switch",
     },
     {
       key: "upload.maxFileSizeMb",
-      scope: "SYSTEM",
+      scope: SettingScope.SYSTEM,
       value: { value: 15 },
       description: "Maximum upload file size in MB",
     },
   ];
 
   for (const s of settings) {
-    await prisma.appSetting.upsert({
+    const existing = await prisma.appSetting.findFirst({
       where: {
-        key_scope_controlId: {
-          key: s.key,
-          scope: s.scope,
-          controlId: null,
-        },
-      },
-      update: {
-        value: s.value,
-        description: s.description,
-        updatedById: demoUser.id,
-      },
-      create: {
         key: s.key,
         scope: s.scope,
-        value: s.value,
-        description: s.description,
-        updatedById: demoUser.id,
+        controlId: null,
       },
     });
+
+    if (existing) {
+      await prisma.appSetting.update({
+        where: { id: existing.id },
+        data: {
+          value: s.value,
+          description: s.description,
+          updatedById: demoUser.id,
+        },
+      });
+    } else {
+      await prisma.appSetting.create({
+        data: {
+          key: s.key,
+          scope: s.scope,
+          value: s.value,
+          description: s.description,
+          updatedById: demoUser.id,
+        },
+      });
+    }
   }
 
-  // -----------------------------
-  // Optional Power BI placeholders
-  // -----------------------------
   const workspace = await prisma.powerBIWorkspace.upsert({
     where: { workspaceKey: "demo-workspace" },
     update: {
@@ -436,24 +430,29 @@ async function main() {
       },
     });
 
-    await prisma.controlReportMap.upsert({
+    const existingMap = await prisma.controlReportMap.findFirst({
       where: {
-        controlId_reportId_effectiveFrom: {
-          controlId: controlIdsByCode[item.code],
-          reportId: report.id,
-          effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
-        },
-      },
-      update: {
-        isDefault: true,
-      },
-      create: {
         controlId: controlIdsByCode[item.code],
         reportId: report.id,
-        isDefault: true,
         effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
       },
     });
+
+    if (existingMap) {
+      await prisma.controlReportMap.update({
+        where: { id: existingMap.id },
+        data: { isDefault: true },
+      });
+    } else {
+      await prisma.controlReportMap.create({
+        data: {
+          controlId: controlIdsByCode[item.code],
+          reportId: report.id,
+          isDefault: true,
+          effectiveFrom: new Date("2026-01-01T00:00:00.000Z"),
+        },
+      });
+    }
   }
 
   console.log("Seed completed.");
