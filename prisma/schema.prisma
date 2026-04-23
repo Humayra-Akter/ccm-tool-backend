@@ -1,13 +1,707 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+enum UserStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  LOCKED
+  DISABLED
+}
+
+enum RoleCode {
+  SUPER_ADMIN
+  ADMIN
+  ANALYST
+  VIEWER
+  AUDITOR
+}
+
+enum PermissionResource {
+  USERS
+  ROLES
+  DASHBOARD
+  KPI
+  EXCEPTION
+  UPLOAD
+  SETTINGS
+  POWERBI_REPORT
+  CONTROL
+  THRESHOLD
+  AUDIT_LOG
+}
+
+enum PermissionAction {
+  CREATE
+  READ
+  UPDATE
+  DELETE
+  EXPORT
+  UPLOAD
+  APPROVE
+  MANAGE
+}
+
+enum ControlCode {
+  EARLY_PAYMENTS
+  DUPLICATE_PAYMENTS
+  DORMANT_PO
+  TWO_WAY_MATCH
+  NEW_UNDELIVERED_POS
+  AGED_OPEN_ADVANCES
+  INVOICE_SPLIT_BYPASS
+  DELAY_IN_INVOICING
+}
+
+enum ControlCategory {
+  PAYMENT
+  PROCURE_TO_PAY
+  PROCUREMENT
+  ADVANCE
+  INVOICING
+}
+
+enum ControlState {
+  DRAFT
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum HealthStatus {
+  GREEN
+  AMBER
+  RED
+  GREY
+}
+
+enum TrendDirection {
+  UP
+  DOWN
+  FLAT
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum SeverityLevel {
+  INFO
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum ExceptionStatus {
+  OPEN
+  ACKNOWLEDGED
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+  FALSE_POSITIVE
+  WAIVED
+}
+
+enum SnapshotGranularity {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+enum EntityType {
+  COMPANY
+  LEGAL_ENTITY
+  BUSINESS_UNIT
+  DEPARTMENT
+  VENDOR
+  COUNTRY
+  REGION
+}
+
+enum UploadCategory {
+  CONTROL_SOURCE_DATA
+  EXCEPTION_SOURCE
+  KPI_BASELINE
+  MASTER_DATA
+  REPORT_REFRESH
+  TEMPLATE
+  OTHER
+}
+
+enum SourceSystem {
+  MANUAL_UPLOAD
+  ERP
+  SAP
+  ORACLE
+  POWERBI
+  API
+  CSV
+  EXCEL
+  OTHER
+}
+
+enum UploadStatus {
+  PENDING
+  UPLOADED
+  VALIDATING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+  ARCHIVED
+}
+
+enum RunType {
+  INGESTION
+  VALIDATION
+  AGGREGATION
+  KPI_REFRESH
+  POWERBI_REFRESH
+  SCHEDULED_SYNC
+  MANUAL_RECALC
+}
+
+enum RunStatus {
+  QUEUED
+  RUNNING
+  SUCCESS
+  PARTIAL_SUCCESS
+  FAILED
+  CANCELLED
+}
+
+enum TriggerType {
+  MANUAL
+  SCHEDULED
+  API
+  UPLOAD
+  SYSTEM
+}
+
+enum ReportAccessMode {
+  POWERBI_EMBED
+  EMBED_URL
+  IFRAME
+}
+
+enum SettingScope {
+  SYSTEM
+  USER
+  CONTROL
+}
+
+enum ThresholdOperator {
+  GT
+  GTE
+  LT
+  LTE
+  EQ
+  BETWEEN
+}
+
+enum PageScope {
+  DASHBOARD
+  KPI
+  EXCEPTIONS
+  UPLOAD
+  SETTINGS
+}
+
+enum AuditAction {
+  LOGIN
+  LOGOUT
+  CREATE
+  UPDATE
+  DELETE
+  VIEW
+  EXPORT
+  UPLOAD
+  RETRY
+  PROCESS
+  ASSIGN
+  RESOLVE
+  CONFIGURE
+}
+
+enum AuditEntityType {
+  USER
+  ROLE
+  PERMISSION
+  CONTROL
+  POWERBI_REPORT
+  CONTROL_REPORT_MAP
+  EXCEPTION
+  UPLOAD
+  PROCESS_RUN
+  SETTING
+  SESSION
+}
+
+model User {
+  id                 String                   @id @default(uuid()) @db.Uuid
+  email              String                   @unique
+  username           String?                  @unique
+  fullName           String
+  passwordHash       String
+  status             UserStatus               @default(ACTIVE)
+  isEmailVerified    Boolean                  @default(false)
+  failedLoginCount   Int                      @default(0)
+  lockedUntil        DateTime?
+  lastLoginAt        DateTime?
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+
+  userRoles          UserRole[]
+  sessions           AuthSession[]
+  passwordResets     PasswordResetToken[]
+  verificationTokens EmailVerificationToken[]
+  uploads            UploadBatch[]            @relation("UploadCreatedBy")
+  savedViews         SavedView[]
+  auditLogs          AuditLog[]               @relation("AuditActor")
+  processRuns        ProcessRun[]             @relation("RunTriggeredBy")
+  assignedExceptions ExceptionRecord[]        @relation("ExceptionOwner")
+  resolvedExceptions ExceptionRecord[]        @relation("ExceptionResolver")
+  appSettingsUpdated AppSetting[]             @relation("SettingUpdatedBy")
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  code        RoleCode         @unique
+  name        String           @unique
+  description String?
+  isSystem    Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  userRoles   UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String               @id @default(uuid()) @db.Uuid
+  resource    PermissionResource
+  action      PermissionAction
+  code        String               @unique
+  description String?
+  createdAt   DateTime             @default(now())
+
+  roles       RolePermission[]
+
+  @@unique([resource, action])
+}
+
+model UserRole {
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @db.Uuid
+  roleId     String    @db.Uuid
+  assignedAt DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role      @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  id           String      @id @default(uuid()) @db.Uuid
+  roleId       String      @db.Uuid
+  permissionId String      @db.Uuid
+  createdAt    DateTime    @default(now())
+
+  role         Role        @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission  @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model AuthSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  refreshTokenHash String?
+  accessJti        String?   @unique
+  ipAddress        String?
+  userAgent        String?
+  createdAt        DateTime  @default(now())
+  lastSeenAt       DateTime?
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revokedReason    String?
+
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model EmailVerificationToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}
+
+model Control {
+  id              String                  @id @default(uuid()) @db.Uuid
+  code            ControlCode             @unique
+  name            String                  @unique
+  description     String?
+  category        ControlCategory
+  state           ControlState            @default(ACTIVE)
+  ownerTeam       String?
+  displayOrder    Int                     @default(0)
+  defaultCurrency String                  @default("USD")
+  thresholdConfig Json?
+  uiConfig        Json?
+  isEnabled       Boolean                 @default(true)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  thresholds      ControlThreshold[]
+  reportMappings  ControlReportMap[]
+  metricSnapshots ControlMetricSnapshot[]
+  exceptions      ExceptionRecord[]
+  entityScores    EntityScoreSnapshot[]
+  uploads         UploadBatch[]
+  processRuns     ProcessRun[]
+  savedViews      SavedView[]
+  settings        AppSetting[]
+}
+
+model ControlThreshold {
+  id            String              @id @default(uuid()) @db.Uuid
+  controlId     String              @db.Uuid
+  metricKey     String
+  label         String
+  operator      ThresholdOperator
+  greenMin      Decimal?            @db.Decimal(18, 4)
+  greenMax      Decimal?            @db.Decimal(18, 4)
+  amberMin      Decimal?            @db.Decimal(18, 4)
+  amberMax      Decimal?            @db.Decimal(18, 4)
+  redMin        Decimal?            @db.Decimal(18, 4)
+  redMax        Decimal?            @db.Decimal(18, 4)
+  effectiveFrom DateTime            @default(now())
+  effectiveTo   DateTime?
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+
+  control       Control             @relation(fields: [controlId], references: [id], onDelete: Cascade)
+
+  @@index([controlId, metricKey])
+}
+
+model PowerBIWorkspace {
+  id          String          @id @default(uuid()) @db.Uuid
+  workspaceKey String         @unique
+  name        String
+  description String?
+  isActive    Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  reports     PowerBIReport[]
+}
+
+model PowerBIReport {
+  id           String            @id @default(uuid()) @db.Uuid
+  workspaceId  String?           @db.Uuid
+  reportKey    String            @unique
+  reportName   String
+  datasetKey   String?
+  embedUrl     String
+  pageName     String?
+  accessMode   ReportAccessMode  @default(POWERBI_EMBED)
+  isActive     Boolean           @default(true)
+  metadata     Json?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  workspace    PowerBIWorkspace? @relation(fields: [workspaceId], references: [id], onDelete: SetNull)
+  controlMaps  ControlReportMap[]
+
+  @@index([workspaceId])
+}
+
+model ControlReportMap {
+  id           String        @id @default(uuid()) @db.Uuid
+  controlId    String        @db.Uuid
+  reportId     String        @db.Uuid
+  pageName     String?
+  filterConfig Json?
+  isDefault    Boolean       @default(true)
+  effectiveFrom DateTime     @default(now())
+  effectiveTo  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  control      Control       @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  report       PowerBIReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@unique([controlId, reportId, effectiveFrom])
+  @@index([controlId, isDefault])
+}
+
+model BusinessEntity {
+  id          String              @id @default(uuid()) @db.Uuid
+  type        EntityType
+  code        String
+  name        String
+  parentId    String?             @db.Uuid
+  metadata    Json?
+  isActive    Boolean             @default(true)
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  parent      BusinessEntity?     @relation("EntityHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children    BusinessEntity[]    @relation("EntityHierarchy")
+  exceptions  ExceptionRecord[]
+  entityScores EntityScoreSnapshot[]
+
+  @@unique([type, code])
+  @@index([parentId])
+}
+
+model ControlMetricSnapshot {
+  id              String               @id @default(uuid()) @db.Uuid
+  controlId       String               @db.Uuid
+  snapshotDate    DateTime
+  granularity     SnapshotGranularity
+  periodLabel     String?
+  healthStatus    HealthStatus         @default(GREY)
+  trendDirection  TrendDirection       @default(FLAT)
+  totalPopulation Int                  @default(0)
+  passCount       Int                  @default(0)
+  warningCount    Int                  @default(0)
+  breachCount     Int                  @default(0)
+  exceptionCount  Int                  @default(0)
+  exceptionAmount Decimal              @default(0) @db.Decimal(18, 2)
+  exposureAmount  Decimal              @default(0) @db.Decimal(18, 2)
+  healthScore     Decimal?             @db.Decimal(5, 2)
+  sourceRunId     String?              @db.Uuid
+  createdAt       DateTime             @default(now())
+
+  control         Control              @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  sourceRun       ProcessRun?          @relation("RunMetricSnapshots", fields: [sourceRunId], references: [id], onDelete: SetNull)
+
+  @@unique([controlId, snapshotDate, granularity])
+  @@index([snapshotDate])
+}
+
+model EntityScoreSnapshot {
+  id              String               @id @default(uuid()) @db.Uuid
+  controlId       String               @db.Uuid
+  entityId        String               @db.Uuid
+  snapshotDate    DateTime
+  granularity     SnapshotGranularity
+  healthStatus    HealthStatus         @default(GREY)
+  riskLevel       RiskLevel            @default(LOW)
+  score           Decimal?             @db.Decimal(5, 2)
+  exceptionCount  Int                  @default(0)
+  exceptionAmount Decimal              @default(0) @db.Decimal(18, 2)
+  exposureAmount  Decimal              @default(0) @db.Decimal(18, 2)
+  createdAt       DateTime             @default(now())
+
+  control         Control              @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  entity          BusinessEntity       @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([controlId, entityId, snapshotDate, granularity])
+  @@index([entityId, snapshotDate])
+}
+
+model ExceptionRecord {
+  id              String           @id @default(uuid()) @db.Uuid
+  controlId       String           @db.Uuid
+  entityId        String?          @db.Uuid
+  ownerId         String?          @db.Uuid
+  resolvedById    String?          @db.Uuid
+  sourceRunId     String?          @db.Uuid
+  externalRef     String?
+  title           String
+  description     String?
+  status          ExceptionStatus  @default(OPEN)
+  severity        SeverityLevel    @default(MEDIUM)
+  riskLevel       RiskLevel        @default(MEDIUM)
+  amount          Decimal?         @db.Decimal(18, 2)
+  currencyCode    String?          @default("USD")
+  sourceSystem    SourceSystem     @default(MANUAL_UPLOAD)
+  detectedAt      DateTime         @default(now())
+  dueAt           DateTime?
+  acknowledgedAt  DateTime?
+  resolvedAt      DateTime?
+  closedAt        DateTime?
+  rootCause       String?
+  actionRequired  String?
+  resolutionNote  String?
+  metadata        Json?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  control         Control          @relation(fields: [controlId], references: [id], onDelete: Cascade)
+  entity          BusinessEntity?  @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  owner           User?            @relation("ExceptionOwner", fields: [ownerId], references: [id], onDelete: SetNull)
+  resolvedBy      User?            @relation("ExceptionResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  sourceRun       ProcessRun?      @relation("RunExceptions", fields: [sourceRunId], references: [id], onDelete: SetNull)
+
+  @@unique([controlId, externalRef])
+  @@index([controlId, status, severity])
+  @@index([entityId])
+}
+
+model UploadBatch {
+  id                 String          @id @default(uuid()) @db.Uuid
+  controlId          String?         @db.Uuid
+  uploadedById       String?         @db.Uuid
+  fileName           String
+  originalFileName   String
+  storagePath        String
+  mimeType           String
+  fileExtension      String?
+  fileSizeBytes      BigInt
+  checksum           String?
+  category           UploadCategory
+  sourceSystem       SourceSystem    @default(MANUAL_UPLOAD)
+  reportingPeriodStart DateTime?
+  reportingPeriodEnd DateTime?
+  status             UploadStatus    @default(PENDING)
+  rowCount           Int             @default(0)
+  successRowCount    Int             @default(0)
+  failedRowCount     Int             @default(0)
+  errorMessage       String?
+  meta               Json?
+  uploadedAt         DateTime        @default(now())
+  processingStartedAt DateTime?
+  completedAt        DateTime?
+
+  control            Control?        @relation(fields: [controlId], references: [id], onDelete: SetNull)
+  uploadedBy         User?           @relation("UploadCreatedBy", fields: [uploadedById], references: [id], onDelete: SetNull)
+  rowErrors          UploadRowError[]
+  processRuns        ProcessRun[]
+
+  @@index([status, uploadedAt])
+  @@index([controlId, uploadedAt])
+}
+
+model UploadRowError {
+  id           String       @id @default(uuid()) @db.Uuid
+  uploadBatchId String      @db.Uuid
+  rowNumber    Int
+  fieldName    String?
+  errorCode    String?
+  errorMessage String
+  rawData      Json?
+  createdAt    DateTime     @default(now())
+
+  uploadBatch  UploadBatch  @relation(fields: [uploadBatchId], references: [id], onDelete: Cascade)
+
+  @@index([uploadBatchId, rowNumber])
+}
+
+model ProcessRun {
+  id               String                  @id @default(uuid()) @db.Uuid
+  controlId        String?                 @db.Uuid
+  uploadBatchId    String?                 @db.Uuid
+  triggeredById    String?                 @db.Uuid
+  type             RunType
+  triggerType      TriggerType             @default(MANUAL)
+  status           RunStatus               @default(QUEUED)
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  recordsRead      Int                     @default(0)
+  recordsProcessed Int                     @default(0)
+  recordsFailed    Int                     @default(0)
+  message          String?
+  metadata         Json?
+  createdAt        DateTime                @default(now())
+
+  control          Control?                @relation(fields: [controlId], references: [id], onDelete: SetNull)
+  uploadBatch      UploadBatch?            @relation(fields: [uploadBatchId], references: [id], onDelete: SetNull)
+  triggeredBy      User?                   @relation("RunTriggeredBy", fields: [triggeredById], references: [id], onDelete: SetNull)
+  metricSnapshots  ControlMetricSnapshot[] @relation("RunMetricSnapshots")
+  exceptions       ExceptionRecord[]       @relation("RunExceptions")
+
+  @@index([status, createdAt])
+  @@index([controlId, type])
+}
+
+model SavedView {
+  id        String      @id @default(uuid()) @db.Uuid
+  userId    String      @db.Uuid
+  controlId String?     @db.Uuid
+  page      PageScope
+  name      String
+  filters   Json
+  isDefault Boolean     @default(false)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  control   Control?    @relation(fields: [controlId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, page, name])
+}
+
+model AppSetting {
+  id          String        @id @default(uuid()) @db.Uuid
+  key         String
+  scope       SettingScope  @default(SYSTEM)
+  controlId   String?       @db.Uuid
+  updatedById String?       @db.Uuid
+  value       Json
+  description String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  control     Control?      @relation(fields: [controlId], references: [id], onDelete: SetNull)
+  updatedBy   User?         @relation("SettingUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@unique([key, scope, controlId])
+}
+
+model AuditLog {
+  id         String          @id @default(uuid()) @db.Uuid
+  actorUserId String?        @db.Uuid
+  action     AuditAction
+  entityType AuditEntityType
+  entityId   String?
+  summary    String?
+  ipAddress  String?
+  userAgent  String?
+  before     Json?
+  after      Json?
+  createdAt  DateTime        @default(now())
+
+  actor      User?           @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId, createdAt])
+  @@index([entityType, entityId])
 }
