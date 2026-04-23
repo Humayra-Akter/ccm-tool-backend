@@ -8,7 +8,8 @@
     "prisma:generate": "prisma generate --config prisma.config.ts",
     "prisma:migrate": "prisma migrate dev --config prisma.config.ts",
     "prisma:studio": "prisma studio --config prisma.config.ts",
-    "prisma:deploy": "prisma migrate deploy --config prisma.config.ts"
+    "prisma:deploy": "prisma migrate deploy --config prisma.config.ts",
+    "prisma:seed": "node prisma/seed.js"
   },
   "keywords": [],
   "author": "",
