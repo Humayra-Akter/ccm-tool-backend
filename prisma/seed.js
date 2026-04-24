@@ -194,7 +194,7 @@ async function main() {
   const demoUser = await prisma.user.upsert({
     where: { email: "admin@ccm.local" },
     update: {
-      fullName: "CCM Demo Admin",
+      fullName: "CCM Admin",
       passwordHash,
       status: UserStatus.ACTIVE,
       isEmailVerified: true,
@@ -202,7 +202,7 @@ async function main() {
     create: {
       email: "admin@ccm.local",
       username: "ccmadmin",
-      fullName: "CCM Demo Admin",
+      fullName: "CCM Admin",
       passwordHash,
       status: UserStatus.ACTIVE,
       isEmailVerified: true,
@@ -454,6 +454,415 @@ async function main() {
       });
     }
   }
+
+    const entities = [
+      { type: "BUSINESS_UNIT", code: "CORP_PROJ", name: "Corporate Projects" },
+      {
+        type: "BUSINESS_UNIT",
+        code: "PROC_SHARED",
+        name: "Procurement Shared Services",
+      },
+      { type: "BUSINESS_UNIT", code: "TRACK_DEV", name: "Track Development" },
+      {
+        type: "BUSINESS_UNIT",
+        code: "DELIVERY_OPS",
+        name: "Delivery Operations",
+      },
+    ];
+
+    const entityIdsByCode = {};
+
+    for (const item of entities) {
+      const entity = await prisma.businessEntity.upsert({
+        where: {
+          type_code: {
+            type: item.type,
+            code: item.code,
+          },
+        },
+        update: {
+          name: item.name,
+          isActive: true,
+        },
+        create: {
+          type: item.type,
+          code: item.code,
+          name: item.name,
+          isActive: true,
+        },
+      });
+
+      entityIdsByCode[item.code] = entity.id;
+    }
+
+    const monthlyTrendValues = [42, 45, 44, 58, 63, 79, 96, 84, 71, 59, 48, 52];
+    const months = Array.from({ length: 12 }, (_, i) => i);
+
+    for (const controlCode of Object.keys(controlIdsByCode)) {
+      if (controlCode === "DELAY_IN_INVOICING") continue;
+
+      for (const monthIndex of months) {
+        const snapshotDate = new Date(Date.UTC(2026, monthIndex, 1));
+
+        const existingSnapshot = await prisma.controlMetricSnapshot.findFirst({
+          where: {
+            controlId: controlIdsByCode[controlCode],
+            snapshotDate,
+            granularity: "MONTHLY",
+          },
+        });
+
+        if (!existingSnapshot) {
+          await prisma.controlMetricSnapshot.create({
+            data: {
+              controlId: controlIdsByCode[controlCode],
+              snapshotDate,
+              granularity: "MONTHLY",
+              periodLabel: snapshotDate.toLocaleString("en-US", {
+                month: "short",
+              }),
+              healthStatus: monthIndex > 6 ? "AMBER" : "GREEN",
+              trendDirection: monthIndex > 0 ? "UP" : "FLAT",
+              totalPopulation: 100,
+              passCount: 80,
+              warningCount: 12,
+              breachCount: 8,
+              exceptionCount: Math.max(
+                1,
+                Math.round(monthlyTrendValues[monthIndex] / 20),
+              ),
+              exceptionAmount: monthlyTrendValues[monthIndex] * 10000,
+              exposureAmount: monthlyTrendValues[monthIndex] * 15000,
+              healthScore: monthlyTrendValues[monthIndex],
+            },
+          });
+        }
+      }
+    }
+
+    const exceptionSeed = [
+      {
+        controlCode: "DUPLICATE_PAYMENTS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1001",
+        title: "Duplicate payment cluster detected",
+        riskLevel: "HIGH",
+        severity: "HIGH",
+        amount: 4800000,
+        dueAt: new Date("2026-05-27"),
+      },
+      {
+        controlCode: "AGED_OPEN_ADVANCES",
+        entityCode: "CORP_PROJ",
+        externalRef: "EX-1002",
+        title: "Aged advance remains unreconciled",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 3200000,
+        dueAt: new Date("2026-05-29"),
+      },
+      {
+        controlCode: "INVOICE_SPLIT_BYPASS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1003",
+        title: "Invoice split bypass pattern found",
+        riskLevel: "HIGH",
+        severity: "HIGH",
+        amount: 5900000,
+        dueAt: new Date("2026-05-31"),
+      },
+      {
+        controlCode: "DORMANT_PO",
+        entityCode: "TRACK_DEV",
+        externalRef: "EX-1004",
+        title: "Dormant PO ageing beyond threshold",
+        riskLevel: "LOW",
+        severity: "LOW",
+        amount: 700000,
+        dueAt: new Date("2026-06-02"),
+      },
+      {
+        controlCode: "NEW_UNDELIVERED_POS",
+        entityCode: "DELIVERY_OPS",
+        externalRef: "EX-1005",
+        title: "Undelivered PO requiring escalation",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 2400000,
+        dueAt: new Date("2026-06-04"),
+      },
+      {
+        controlCode: "EARLY_PAYMENTS",
+        entityCode: "CORP_PROJ",
+        externalRef: "EX-1006",
+        title: "Early settlement before approved schedule",
+        riskLevel: "HIGH",
+        severity: "HIGH",
+        amount: 1800000,
+        dueAt: new Date("2026-06-06"),
+      },
+      {
+        controlCode: "EARLY_PAYMENTS",
+        entityCode: "CORP_PROJ",
+        externalRef: "EX-1007",
+        title: "Additional early payment variance",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 1200000,
+        dueAt: new Date("2026-06-08"),
+      },
+      {
+        controlCode: "EARLY_PAYMENTS",
+        entityCode: "CORP_PROJ",
+        externalRef: "EX-1008",
+        title: "Third early payment anomaly",
+        riskLevel: "HIGH",
+        severity: "HIGH",
+        amount: 900000,
+        dueAt: new Date("2026-06-09"),
+      },
+      {
+        controlCode: "DUPLICATE_PAYMENTS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1009",
+        title: "Additional duplicate vendor invoice",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 1100000,
+        dueAt: new Date("2026-06-10"),
+      },
+      {
+        controlCode: "DUPLICATE_PAYMENTS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1010",
+        title: "Payment rerun duplication issue",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 600000,
+        dueAt: new Date("2026-06-11"),
+      },
+      {
+        controlCode: "DUPLICATE_PAYMENTS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1011",
+        title: "Third duplicate payment exception",
+        riskLevel: "LOW",
+        severity: "LOW",
+        amount: 400000,
+        dueAt: new Date("2026-06-12"),
+      },
+      {
+        controlCode: "TWO_WAY_MATCH",
+        entityCode: "DELIVERY_OPS",
+        externalRef: "EX-1012",
+        title: "Mismatch between PO and invoice values",
+        riskLevel: "LOW",
+        severity: "LOW",
+        amount: 500000,
+        dueAt: new Date("2026-06-13"),
+      },
+      {
+        controlCode: "TWO_WAY_MATCH",
+        entityCode: "DELIVERY_OPS",
+        externalRef: "EX-1013",
+        title: "Additional line-level mismatch",
+        riskLevel: "LOW",
+        severity: "LOW",
+        amount: 350000,
+        dueAt: new Date("2026-06-14"),
+      },
+      {
+        controlCode: "TWO_WAY_MATCH",
+        entityCode: "DELIVERY_OPS",
+        externalRef: "EX-1014",
+        title: "Third mismatch case under review",
+        riskLevel: "LOW",
+        severity: "LOW",
+        amount: 250000,
+        dueAt: new Date("2026-06-15"),
+      },
+      {
+        controlCode: "TWO_WAY_MATCH",
+        entityCode: "DELIVERY_OPS",
+        externalRef: "EX-1015",
+        title: "Fourth mismatch case under review",
+        riskLevel: "LOW",
+        severity: "LOW",
+        amount: 220000,
+        dueAt: new Date("2026-06-16"),
+      },
+      {
+        controlCode: "NEW_UNDELIVERED_POS",
+        entityCode: "DELIVERY_OPS",
+        externalRef: "EX-1016",
+        title: "Second undelivered PO issue",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 1200000,
+        dueAt: new Date("2026-06-17"),
+      },
+      {
+        controlCode: "AGED_OPEN_ADVANCES",
+        entityCode: "CORP_PROJ",
+        externalRef: "EX-1017",
+        title: "Second aged advance case",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 1700000,
+        dueAt: new Date("2026-06-18"),
+      },
+      {
+        controlCode: "AGED_OPEN_ADVANCES",
+        entityCode: "CORP_PROJ",
+        externalRef: "EX-1018",
+        title: "Third aged advance case",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 900000,
+        dueAt: new Date("2026-06-19"),
+      },
+      {
+        controlCode: "INVOICE_SPLIT_BYPASS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1019",
+        title: "Second invoice split exception",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 2500000,
+        dueAt: new Date("2026-06-20"),
+      },
+      {
+        controlCode: "INVOICE_SPLIT_BYPASS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1020",
+        title: "Third invoice split exception",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 1400000,
+        dueAt: new Date("2026-06-21"),
+      },
+      {
+        controlCode: "INVOICE_SPLIT_BYPASS",
+        entityCode: "PROC_SHARED",
+        externalRef: "EX-1021",
+        title: "Fourth invoice split exception",
+        riskLevel: "MEDIUM",
+        severity: "MEDIUM",
+        amount: 800000,
+        dueAt: new Date("2026-06-22"),
+      },
+    ];
+
+    for (const item of exceptionSeed) {
+      const existing = await prisma.exceptionRecord.findFirst({
+        where: {
+          controlId: controlIdsByCode[item.controlCode],
+          externalRef: item.externalRef,
+        },
+      });
+
+      if (!existing) {
+        await prisma.exceptionRecord.create({
+          data: {
+            controlId: controlIdsByCode[item.controlCode],
+            entityId: entityIdsByCode[item.entityCode],
+            externalRef: item.externalRef,
+            title: item.title,
+            status: "OPEN",
+            severity: item.severity,
+            riskLevel: item.riskLevel,
+            amount: item.amount,
+            currencyCode: "AED",
+            dueAt: item.dueAt,
+            sourceSystem: "MANUAL_UPLOAD",
+          },
+        });
+      }
+    }
+
+    const entityScoreSeed = [
+      {
+        controlCode: "EARLY_PAYMENTS",
+        entityCode: "CORP_PROJ",
+        score: 72,
+        exceptionCount: 3,
+        exceptionAmount: 3900000,
+      },
+      {
+        controlCode: "DUPLICATE_PAYMENTS",
+        entityCode: "PROC_SHARED",
+        score: 84,
+        exceptionCount: 4,
+        exceptionAmount: 6900000,
+      },
+      {
+        controlCode: "DORMANT_PO",
+        entityCode: "TRACK_DEV",
+        score: 22,
+        exceptionCount: 1,
+        exceptionAmount: 700000,
+      },
+      {
+        controlCode: "TWO_WAY_MATCH",
+        entityCode: "DELIVERY_OPS",
+        score: 28,
+        exceptionCount: 4,
+        exceptionAmount: 1320000,
+      },
+      {
+        controlCode: "NEW_UNDELIVERED_POS",
+        entityCode: "DELIVERY_OPS",
+        score: 47,
+        exceptionCount: 2,
+        exceptionAmount: 3600000,
+      },
+      {
+        controlCode: "AGED_OPEN_ADVANCES",
+        entityCode: "CORP_PROJ",
+        score: 58,
+        exceptionCount: 3,
+        exceptionAmount: 5800000,
+      },
+      {
+        controlCode: "INVOICE_SPLIT_BYPASS",
+        entityCode: "PROC_SHARED",
+        score: 76,
+        exceptionCount: 4,
+        exceptionAmount: 10500000,
+      },
+    ];
+
+    for (const item of entityScoreSeed) {
+      const snapshotDate = new Date("2026-06-01T00:00:00.000Z");
+
+      const existing = await prisma.entityScoreSnapshot.findFirst({
+        where: {
+          controlId: controlIdsByCode[item.controlCode],
+          entityId: entityIdsByCode[item.entityCode],
+          snapshotDate,
+          granularity: "MONTHLY",
+        },
+      });
+
+      if (!existing) {
+        await prisma.entityScoreSnapshot.create({
+          data: {
+            controlId: controlIdsByCode[item.controlCode],
+            entityId: entityIdsByCode[item.entityCode],
+            snapshotDate,
+            granularity: "MONTHLY",
+            healthStatus:
+              item.score >= 70 ? "RED" : item.score >= 40 ? "AMBER" : "GREEN",
+            riskLevel:
+              item.score >= 70 ? "HIGH" : item.score >= 40 ? "MEDIUM" : "LOW",
+            score: item.score,
+            exceptionCount: item.exceptionCount,
+            exceptionAmount: item.exceptionAmount,
+            exposureAmount: item.exceptionAmount,
+          },
+        });
+      }
+    }
 
   console.log("Seed completed.");
   console.log("Demo login:");
