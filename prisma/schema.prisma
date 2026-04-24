@@ -441,6 +441,10 @@ model PowerBIReport {
   embedUrl     String
   pageName     String?
   accessMode   ReportAccessMode  @default(POWERBI_EMBED)
+  sourceSystem   String?   // ORACLE_FUSION / MICROSOFT_FABRIC / POWER_BI
+  isPublished    Boolean   @default(false)
+  lastRefreshAt  DateTime?
+  notes          String?
   isActive     Boolean           @default(true)
   metadata     Json?
   createdAt    DateTime          @default(now())
@@ -463,6 +467,7 @@ model ControlReportMap {
   effectiveTo  DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
+  prototypeMode  Boolean  @default(false)
 
   control      Control       @relation(fields: [controlId], references: [id], onDelete: Cascade)
   report       PowerBIReport @relation(fields: [reportId], references: [id], onDelete: Cascade)

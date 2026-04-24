@@ -225,6 +225,180 @@ export async function getDashboardKpiHealth(req, res, next) {
   }
 }
 
+export async function getExceptionAnalytics(req, res, next) {
+  try {
+    const exceptions = await prisma.exceptionRecord.findMany({
+      include: {
+        control: true,
+      },
+    });
+
+    const total = exceptions.length;
+    const highRisk = exceptions.filter((e) => e.riskLevel === "HIGH").length;
+    const mediumRisk = exceptions.filter(
+      (e) => e.riskLevel === "MEDIUM",
+    ).length;
+    const lowRisk = exceptions.filter((e) => e.riskLevel === "LOW").length;
+
+    const exposure = exceptions.reduce(
+      (sum, item) => sum + Number(item.amount || 0),
+      0,
+    );
+
+    const byControlMap = {};
+    for (const item of exceptions) {
+      const key = item.control?.name || "Unknown";
+      byControlMap[key] = (byControlMap[key] || 0) + 1;
+    }
+
+    const byControl = Object.entries(byControlMap).map(([label, value]) => ({
+      label,
+      value,
+    }));
+
+    const trend = [
+      { label: "Jan", value: 3 },
+      { label: "Feb", value: 5 },
+      { label: "Mar", value: 4 },
+      { label: "Apr", value: 7 },
+      { label: "May", value: 6 },
+      { label: "Jun", value: 9 },
+    ];
+
+    res.json({
+      success: true,
+      data: {
+        summary: {
+          total,
+          highRisk,
+          mediumRisk,
+          lowRisk,
+          exposure,
+        },
+        byControl,
+        trend,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+export async function getAllExceptions(req, res, next) {
+  try {
+    const {
+      entity = "ALL",
+      risk = "ALL",
+      status = "ALL",
+      control = "ALL",
+      search = "",
+      sortBy = "detectedAt",
+      sortDir = "desc",
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const where = {};
+
+    if (risk !== "ALL") {
+      where.riskLevel = risk.toUpperCase();
+    }
+
+    if (status !== "ALL") {
+      where.status = status.toUpperCase();
+    }
+
+    if (entity !== "ALL") {
+      where.entity = {
+        code: entity,
+      };
+    }
+
+    if (control !== "ALL") {
+      where.control = {
+        code: control,
+      };
+    }
+
+    if (search.trim()) {
+      where.OR = [
+        { externalRef: { contains: search, mode: "insensitive" } },
+        { title: { contains: search, mode: "insensitive" } },
+        { control: { name: { contains: search, mode: "insensitive" } } },
+        { entity: { name: { contains: search, mode: "insensitive" } } },
+      ];
+    }
+
+   const safeSortFields = {
+     id: "externalRef",
+     amount: "amount",
+     dueDate: "dueAt",
+     detectedAt: "detectedAt",
+     risk: "riskLevel",
+     status: "status",
+   };
+
+    const orderField = safeSortFields[sortBy] || "detectedAt";
+
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const [rows, total] = await Promise.all([
+      prisma.exceptionRecord.findMany({
+        where,
+        include: {
+          control: true,
+          entity: true,
+        },
+        orderBy: {
+          [orderField]: sortDir === "asc" ? "asc" : "desc",
+        },
+        skip,
+        take: Number(limit),
+      }),
+      prisma.exceptionRecord.count({ where }),
+    ]);
+
+    const formatted = rows.map((row) => ({
+      id: row.externalRef || row.id.slice(0, 8).toUpperCase(),
+      risk:
+        row.riskLevel === "HIGH"
+          ? "High"
+          : row.riskLevel === "MEDIUM"
+            ? "Medium"
+            : "Low",
+      status: row.status,
+      control: row.control?.name || "-",
+      entity: row.entity?.name || "-",
+      amount: `AED ${Number(row.amount || 0).toLocaleString()}`,
+      dueDate: row.dueAt
+        ? new Date(row.dueAt).toLocaleDateString("en-GB", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+          })
+        : "-",
+      owner: "-",
+      title: row.title || "-",
+    }));
+
+    res.json({
+      success: true,
+      data: {
+        rows: formatted,
+        pagination: {
+          total,
+          page: Number(page),
+          limit: Number(limit),
+          totalPages: Math.ceil(total / Number(limit)),
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getDashboardRecentExceptions(req, res, next) {
   try {
 
