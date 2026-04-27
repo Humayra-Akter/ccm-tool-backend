@@ -6,6 +6,7 @@ import cors from "cors";
 import authRoutes from "./modules/auth/auth.routes.js";
 import dashboardRoutes from "./modules/dashboard/dashboard.routes.js";
 import kpiRoutes from "./modules/kpi/kpi.routes.js";
+import uploadRoutes from "./modules/upload/upload.routes.js";
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.get("/api/health", (req, res) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/kpi", kpiRoutes);
+app.use("/api/uploads", uploadRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
